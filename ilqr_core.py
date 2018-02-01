@@ -1,6 +1,7 @@
 import six
 import abc
 import numpy as np
+from scipy import linalg
 import os
 import math
 import warnings
@@ -23,7 +24,7 @@ class BaseTrajOptimizer():
         """
         raise NotImplementedError
 
-def iLQR(BaseTrajOptimizer):
+class iLQR(BaseTrajOptimizer):
     """Finite Horizon Iterative Linear Quadratic Regulator"""
     def __init__(self, sys_dynamics, cost_func, time_steps, max_reg = 1e10, use_second_order=False):
         """
@@ -59,7 +60,7 @@ def iLQR(BaseTrajOptimizer):
 
         super(iLQR, self).__init__()
 
-    def _forward_rollout(self, x0, us):
+    def _dynamics_rollout(self, x0, us):
         '''
         "Compute a trajectory rollout based on the given dynamics model"
         :param x0: the initial state [state_dimension]
@@ -72,7 +73,76 @@ def iLQR(BaseTrajOptimizer):
         for i in range(0, self.N):
             xs_next = self.dynamics.fx(xs[-1], us[i], i)
             xs = np.append(xs, xs_next, axis=0)
-    
+
+    def _forward_pass(self, xs, us, k, K, alpha=1):
+        """
+        apply the updated control signal and rollout a trajecotry
+        :param xs: Norminal state seq [N+1, state_dimension] 
+        :param us: Norminal control seq [N, control_dimension]
+        :param k:  Feedforward gains [N, control_dimension]
+        :param K:  Feedbackword gains [N, control_dimension, state_dimension]
+        :param alpha: Line search coefficient 
+        :return: 
+        """
+        assert np.shape(us)[0] == self.N, 'The length of control sequence should {}, yet is ' \
+                                          '{} instead.'.format(self.N, np.shape(us)[0])
+        assert np.shape(xs)[0] == self.N + 1, 'The length of state sequence should {}, yet is ' \
+                                              '{} instead.'.format(self.N + 1, np.shape(xs)[0])
+        xs_new = np.zeros_like(xs)
+        us_new = np.zeros_like(us)
+        xs_new[0] = xs[0].copy()
+
+        for i in range(0, self.N ):
+            us_new[i] = us[i] + alpha * k[i] + np.dot(K[i], xs_new[i] - xs[i])
+            xs_new[i+1] = self.dynamics.fx(xs_new[i], us_new[i], i)
+
+    def _backward_pass(self, us, xs, control_limit=None):
+        """
+        Backsweep to compute the feed-forward and feed-backward gain k and K
+        :param us: control seq [N, control_dimension]
+        :param xs: state seq [N+1, state_dimension] 
+        :return: 
+        """
+        k = np.zeros_like(self.k_)
+        K = np.zeros_like(self.K_)
+        V_x = self.cost.l_x(xs[-1], None, self.N, terminal=True)
+        V_xx = self.cost.l_xx(xs[-1], None, self.N, terminal=True)
+
+        for i in range(self.N - 1, -1, -1):
+            x = xs[i]
+            u = us[i]
+
+            Q_x, Q_u, Q_xx, Q_ux, Q_uu = self._compute_Q_terms(x, u, V_x, V_xx, i)
+            Q_uu_inv = linalg(Q_uu) #TODO use svd to avoid singularity ?
+            if control_limit is None:
+                # the regularized version
+                k[i] = np.dot(-Q_uu_inv, Q_u)
+                K[i] = np.dot(-Q_uu_inv, Q_ux)
+
+                V_x = Q_x + np.dot(np.dot(K[i].T, Q_uu), k[i]) + np.dot(K[i].T, Q_u) \
+                      + np.dot(Q_ux.T, k[i])
+
+                V_xx = Q_xx + np.dot(np.dot(K[i].T, Q_uu), K[i]) + np.dot(K[i].T, Q_ux) \
+                       + np.dot(Q_ux.T, K[i])
+                V_xx = 0.5 * (V_xx +  V_xx.T)
+            else:
+                #TODO use newton projection methods to solve the QP
+                pass
+        return k, K
+
+
+
+    def _trajectory_cost(self, xs, us):
+        """
+        Compute the cost along one specific trajectory roll-out
+        :param us: control seq [N, control_dimension]
+        :param xs: state seq [N+1, state_dimension] 
+        :return: 
+        """
+        J = map(lambda args: self.cost.eval(*args), zip(xs[-1], us, range(0, self.N)))
+        J = sum(J) + self.cost.eval(xs[-1], None, self.N, terminal=True)
+        return J
+
     def update_u(self, x0, u_seq_init, n_interations=200, tolerance=1e-6, on_iteration=None, line_search_steps=10):
         """
         Update the optimzal control sequence
@@ -101,20 +171,20 @@ def iLQR(BaseTrajOptimizer):
         alphas = 1.1 ** (-np.arange(line_search_steps) ** 2)
 
         us = u_seq_init.copy()
-        xs = self._forward_rollout(x0, us)
+        xs = self._dynamics_rollout(x0, us)
         J_opt = self._trajectory_cost(us, xs)
-        k = self.k_
-        K = self.K_
+        #k = self.k_
+        #K = self.K_
 
         converged = False
         for iteration in range(0, n_interations):
             accepted = False
             try:
-                k, K = self._backwardpass(us, xs)
+                k, K = self._backward_pass(us, xs)
 
                 #Backtracking Line search
                 for alpha in alphas:
-                    xs_new, us_new = self._line_search(xs, us, k, K, alpha)
+                    xs_new, us_new = self._forward_pass(xs, us, k, K, alpha)
                     J_opt_new = self._trajectory_cost(xs_new, us_new)
 
                     # TODO Comparing the actual reduction and expected reduction ?
@@ -128,7 +198,7 @@ def iLQR(BaseTrajOptimizer):
                         us = us_new
 
                         # Decrease the regularization term
-                        self.delta_ = min(1, self.delta_0_) / self.delta_
+                        self.delta_ = min(1., self.delta_0_) / self.delta_
                         self.mu_ *= self.delta_
                         if (self.mu_) <= self.mu_min_:
                             self.mu_ = 0
@@ -140,7 +210,7 @@ def iLQR(BaseTrajOptimizer):
                 warnings.warn(str(e))
 
             if not accepted:
-                self.delta_ = max(self.delta_, 1) * self.delta_0_
+                self.delta_ = max(self.delta_, 1.) * self.delta_0_
                 self.mu_ = max(self.mu_min_, self.mu_ * self.delta_)
                 if self._mu_max and self._mu >= self._mu_max:
                     warnings.warn("exceeded max regularization term")
@@ -161,8 +231,12 @@ def iLQR(BaseTrajOptimizer):
 
 
 alphas = 1.1**(-np.arange(10)**2)
-alphas = np.zeros((4,5))
 print np.shape(alphas)
 print np.shape(alphas[:-1])
-a = np.array([0])
-print a
+a = np.zeros_like(alphas)
+a[0] = alphas[0]
+
+
+b = range(-100, 0)
+zipped = zip(a, b)
+print type(a)
