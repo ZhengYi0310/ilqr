@@ -41,7 +41,7 @@ class iLQR(BaseTrajOptimizer):
         self.cost = cost_func
         self.N = time_steps
 
-        self.use_Hessians_ = (use_second_order and self.dynamics.has_hessians)
+        self.use_second_order_ = (use_second_order and self.dynamics.has_hessians)
         if use_second_order and not self.dynamics.has_hessians:
             warnings.warn("hessians requested but are unavailable in dynamics")
 
@@ -130,7 +130,42 @@ class iLQR(BaseTrajOptimizer):
                 pass
         return k, K
 
+    def _compute_Q_terms(self, x, u, V_x, V_xx, i):
+        """
+        Compute the quadratic approximation for Q 
+        :param x: state [state_dimension]
+        :param u: control [control_dimension]
+        :param V_x: d/dx of the value function of the next time stamp [state_dimension]
+        :param V_xx: d^2/dx^2 of the value function of the next time stamp [state_dimension, state_dimension]
+        :param i: current time stamp
+        :return: 
+        """
+        f_x = self.dynamics.f_x(x, u, i)
+        f_u = self.dynamics.f_u(x, u, i)
 
+        l_x = self.cost.l_x(x, u, i)
+        l_u = self.cost.l_u(x, u, i)
+        l_xx = self.cost.l_xx(x, u, i)
+        l_ux = self.cost.l_ux(x, u, i)
+        l_uu = self.cost.l_uu(x, u, i)
+
+        Q_x = l_x + np.dot(f_x.T, V_x)
+        Q_u = l_u + np.dot(f_u.T, V_x)
+        Q_xx = l_xx + np.dot(np.dot(f_x.T, V_xx), f_x)
+
+        reg = V_xx + self.mu_ * np.eye(self.dynamics.state_dimension)
+        Q_ux = l_ux + np.dot(np.dot(f_u.T, reg), f_x)
+        Q_uu = l_uu + np.dot(np.dot(f_u.T, reg), f_u)
+
+        if self.use_second_order_:
+            f_xx = self.dynamics.f_xx(x, u, i)
+            f_ux = self.dynamics.f_ux(x, u, i)
+            f_uu = self.dynamics.f_uu(x, u, i)
+
+            Q_xx += np.dot(V_x, f_xx)
+            Q_ux += np.dot(V_x, f_ux)
+            Q_uu += np.dot(V_x, f_uu)
+        return Q_x, Q_u, Q_xx, Q_ux, Q_uu
 
     def _trajectory_cost(self, xs, us):
         """
