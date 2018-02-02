@@ -161,7 +161,7 @@ class iLQR(BaseTrajOptimizer):
             f_xx = self.dynamics.f_xx(x, u, i)
             f_ux = self.dynamics.f_ux(x, u, i)
             f_uu = self.dynamics.f_uu(x, u, i)
-
+            #TODO CAREFUL!! IT'S TENSOR PRODUCT HERE!!
             Q_xx += np.dot(V_x, f_xx)
             Q_ux += np.dot(V_x, f_ux)
             Q_uu += np.dot(V_x, f_uu)

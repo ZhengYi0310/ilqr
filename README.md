@@ -11,4 +11,8 @@ Y. Tassa, T. Erez, and E. Todorov, “Synthesis and stabilization of complex beh
 
 Y. Tassa, N. Mansard, E. Todorov, "Control-Limited Differential Dynamic Programming" 2014
 
+Requirements
+------------
+* [autograd](https://github.com/HIPS/autograd)
+
 
