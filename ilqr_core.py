@@ -174,8 +174,8 @@ class iLQR(BaseTrajOptimizer):
         :param xs: state seq [N+1, state_dimension] 
         :return: 
         """
-        J = map(lambda args: self.cost.eval(*args), zip(xs[-1], us, range(0, self.N)))
-        J = sum(J) + self.cost.eval(xs[-1], None, self.N, terminal=True)
+        J = map(lambda args: self.cost.l(*args), zip(xs[-1], us, range(0, self.N)))
+        J = sum(J) + self.cost.l(xs[-1], None, self.N, terminal=True)
         return J
 
     def update_u(self, x0, u_seq_init, n_interations=200, tolerance=1e-6, on_iteration=None, line_search_steps=10):

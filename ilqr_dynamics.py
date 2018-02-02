@@ -207,10 +207,10 @@ class FiniteDifferenceDynamics(Dynamics):
 
 class AutogradDynamics(Dynamics):
     """
-    dynamic model to with auto differentiation 
+    dynamic model with auto differentiation 
     """
 
-    def __init__(self, f, x, u, dt=None, use_second_order=False, **kwargs):
+    def __init__(self, f, x, u, i=None, use_second_order=False, **kwargs):
         """
         Contruct a dynamics model with auto differentiation 
         :param f: function to be auto differentiated 
@@ -223,13 +223,13 @@ class AutogradDynamics(Dynamics):
         :param kwargs: Additional keyword-arguments to pass to autograd functions 
         """
         self.f_ = f
-        self.dt_ = dt
+        self.i_ = i
 
         t_inv_inputs = np.hstack([x, u]).tolist()
-        t_inputs = np.hstack([x, u]).tolist()
+        t_inputs = np.hstack([x, u, i]).tolist()
         self.x_input_ = x
         self.u_input_ = u
-        self.inputs_ = t_inputs
+        self.t_inputs_ = t_inputs
         self.t_inv_inputs_ = t_inv_inputs
 
         self.state_dimension_ = len(x)
@@ -258,6 +258,21 @@ class AutogradDynamics(Dynamics):
     def control_dimension(self):
         """Control Dimension"""
         return self.control_dimension_
+
+    @property
+    def x(self):
+        """The state variables."""
+        return self._x_input_
+
+    @property
+    def u(self):
+        """The control variables."""
+        return self._u_input_
+
+    @property
+    def i(self):
+        """The time step variable."""
+        return self.i_
 
     @property
     def has_hessians(self):
