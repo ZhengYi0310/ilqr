@@ -1,7 +1,7 @@
 import six
 import abc
 from scipy import optimize
-from autograd import grad, jacobian
+from diff_utils import jacobian_vector, hessian_vector
 import numpy as onp
 import autograd.numpy as np
 from scipy import optimize
@@ -226,8 +226,8 @@ class AutogradDynamics(Dynamics):
         self.f_ = f
         self.i_ = i
 
-        t_inv_inputs = np.hstack([x, u]).tolist()
-        t_inputs = np.hstack([x, u, i]).tolist()
+        t_inv_inputs = np.hstack([x, u])
+        t_inputs = np.hstack([x, u, i])
         self.x_input_ = x
         self.u_input_ = u
         self.t_inputs_ = t_inputs
@@ -236,17 +236,17 @@ class AutogradDynamics(Dynamics):
         self.state_dimension_ = len(x)
         self.control_dimension_ = len(u)
 
-        self._J = jacobian_vec(f, t_inv_inputs, self.state_dim_)
-        self._f = as_function(f, t_inputs, name='f', **kwargs)
-        self._f_x = as_function(self._J[:, :self.state_dim_], t_inputs, name='f_x', **kwargs)
-        self._f_u = as_function(self._J[:, self.state_dim_:], t_inputs, name='f_u', **kwargs)
+        self._J = jacobian_vector(f, t_inv_inputs, self.state_dimension_, self.control_dimension_)
+        self._f = f
+        self._f_x = self._J[0]
+        self._f_u = self._J[1]
 
         self.use_second_order_ = use_second_order
         if use_second_order:
-            self._Q = hessian_vec(f, t_inv_inputs, self.state_dim_)
-            self._f_xx = as_function(self._Q[:, :self.state_dim_, :self.state_dim_], t_inputs, name='f_xx', **kwargs)
-            self._f_ux = as_function(self._Q[:, self.state_dim_:, :self.state_dim_], t_inputs, name='f_ux', **kwargs)
-            self._f_uu = as_function(self._Q[:, self.state_dim_:, self.state_dim_:], t_inputs, name='f_uu', **kwargs)
+            self._Q = hessian_vector(f, t_inv_inputs, self.state_dimension_, self.control_dimension_)
+            self._f_xx = self._Q[0]
+            self._f_ux = self._Q[1]
+            self._f_uu = self._Q[2]
 
         super(AutogradDynamics, self).__init__()
 
@@ -288,7 +288,7 @@ class AutogradDynamics(Dynamics):
         :param i: current time stamp
         :return: state_next [state_dimension]
         """
-        return self._f(*np.hstack([x, u, i]))
+        return np.array(self._f(x, u, i)).reshape((self.state_dimension_, 1))
 
     def f_x(self, x, u, i):
         """
@@ -298,7 +298,13 @@ class AutogradDynamics(Dynamics):
         :param i: current time stamp
         :return: df/dx [state_dimension, state_dimension]
         """
-        return self._f_x(*np.hstack([x, u, i]))
+        list_jacobian_state =[]
+        assert (self.state_dimension_ == len(self._f_x)), "the state vector has length {}, yet the " \
+                                                          "returned jacobian has length {}".format(self.state_dimension_, len(self._f_x))
+        for k in range(0, self.state_dimension_):
+            list_jacobian_state.append(np.array(self._f_x[k](x, u)))
+
+        return np.array(list_jacobian_state)
 
     def f_u(self, x, u, i):
         """
@@ -308,7 +314,12 @@ class AutogradDynamics(Dynamics):
         :param i: current time stamp
         :return: df/du [state_dimension, control_dimension]
         """
-        return self._f_u(*np.hstack([x, u, i]))
+        list_jacobian_control = []
+        assert (self.state_dimension_ == len(self._f_u)), "the state vector has length {}, yet the " \
+                                                          "returned jacobian has length {}".format(self.state_dimension_, len(self._f_x))
+        for k in range(0, self.state_dimension_):
+            list_jacobian_control.append(np.array(self._f_x[k](x, u)))
+        return np.array(list_jacobian_control)
 
     def f_xx(self, x, u, i):
         """
@@ -321,7 +332,13 @@ class AutogradDynamics(Dynamics):
         if not self.use_second_order_:
             raise NotImplementedError
         else:
-            return self._f_xx(*np.hstack([x, u, i]))
+            list_hessian_xx = []
+            assert (self.state_dimension_ == len(self._f_xx)), "the state vector has length {}, yet the " \
+                                                              "returned jacobian has length {}".format(
+                self.state_dimension_, len(self._f_xx))
+            for k in range(0, self.state_dimension_):
+                list_hessian_xx.append(np.array(self._f_xx[k](x, u)))
+            return np.array(list_hessian_xx)
 
 
     def f_ux(self, x, u, i):
@@ -335,7 +352,13 @@ class AutogradDynamics(Dynamics):
         if not self.use_second_order_:
             raise NotImplementedError
         else:
-            return self._f_ux(*np.hstack([x, u, i]))
+            list_hessian_ux = []
+            assert (self.state_dimension_ == len(self._f_ux)), "the state vector has length {}, yet the " \
+                                                               "returned jacobian has length {}".format(
+                self.state_dimension_, len(self._f_ux))
+            for k in range(0, self.state_dimension_):
+                list_hessian_ux.append(np.array(self._f_ux[k](x, u)))
+            return np.array(list_hessian_ux)
 
     def f_uu(self, x, u, i):
         """
@@ -348,15 +371,14 @@ class AutogradDynamics(Dynamics):
         if not self.use_second_order_:
             raise NotImplementedError
         else:
-            return self._f_uu(*np.hstack([x, u, i]))
+            list_hessian_uu = []
+            assert (self.state_dimension_ == len(self._f_uu)), "the state vector has length {}, yet the " \
+                                                               "returned jacobian has length {}".format(
+                self.state_dimension_, len(self._f_ux))
+            for k in range(0, self.state_dimension_):
+                list_hessian_uu.append(np.array(self._f_uu[k](x, u)))
+            return np.array(list_hessian_uu)
 
 
 
 
-def multiply(*args):
-    for num in args:
-       print(num)
-a = np.array((1,2,3)).reshape(3, 1)
-b = np.array((2,3,4)).reshape(3, 1)
-print(np.hstack([a , b]).tolist())
-print(multiply(*(np.hstack([a , b]))))

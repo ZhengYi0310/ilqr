@@ -280,8 +280,8 @@ class AutogradCost(Cost):
         :return: 
         """
         if terminal:
-            return onp.asscalar(self._l_terminal(x, u, i))
-        return onp.asscalar(self._l_terminal(x, u))
+            return np.asscalar(self._l_terminal(x, u, i))
+        return np.asscalar(self._l_terminal(x, u))
 
 
     def l_x(self, x, u, i, terminal=False):
@@ -294,8 +294,8 @@ class AutogradCost(Cost):
         :return: dl/dx [state_dimension]
         """
         if terminal:
-            return self._l_x_terminal(x, u, i)
-        return self._l_x(x, u)
+            return np.array(self._l_x_terminal(x, u, i))
+        return np.array(self._l_x(x, u))
 
     def l_u(self, x, u, i, terminal=False):
         """
@@ -307,8 +307,8 @@ class AutogradCost(Cost):
         :return: dl/du [control_dimension]
         """
         if terminal:
-            return onp.zeros(self.control_dim_)
-        return self._l_u(x, u)
+            return np.zeros(self.control_dim_)
+        return np.array(self._l_u(x, u))
 
     def l_xx(self, x, u, i, terminal=False):
         """
@@ -320,8 +320,8 @@ class AutogradCost(Cost):
         :return: d^2l/du^2 [state_dimension, state_dimension]
         """
         if terminal:
-            return self._l_xx_terminal(x, u, i)
-        return self._l_xx_(x, u)
+            return np.array(self._l_xx_terminal(x, u, i))
+        return np.array(self._l_xx_(x, u))
 
     def l_ux(self, x, u, i, terminal=False):
         """
@@ -333,8 +333,8 @@ class AutogradCost(Cost):
         :return: d^2l/dudx [control_dimension, state_dimension]
         """
         if terminal:
-            return onp.zeros((self.control_dim_, self.state_dim_))
-        return self._l_ux(x, u)
+            return np.zeros((self.control_dim_, self.state_dim_))
+        return np.array(self._l_ux(x, u))
 
     @abc.abstractmethod
     def l_uu(self, x, u, i, terminal=False):
@@ -347,8 +347,8 @@ class AutogradCost(Cost):
         :return: d^2l/dudu [control_dimension, control_dimension]
         """
         if terminal:
-            return onp.zeros((self.control_dim_, self.control_dim_))
-        return self._l_uu(x, u)
+            return np.zeros((self.control_dim_, self.control_dim_))
+        return np.array(self._l_uu(x, u))
 
 class QRCost(Cost):
     """Quadratic Regulator Instantaneous Cost."""
