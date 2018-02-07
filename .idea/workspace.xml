@@ -2,9 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="d6db46c8-b2ad-46ba-ab61-c4d6066bc606" name="Default" comment="">
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/diff_utils.py" afterPath="$PROJECT_DIR$/diff_utils.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/ilqr_cost.py" afterPath="$PROJECT_DIR$/ilqr_cost.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/ilqr_dynamics.py" afterPath="$PROJECT_DIR$/ilqr_dynamics.py" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/ilqr_core.py" afterPath="$PROJECT_DIR$/ilqr_core.py" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="TRACKING_ENABLED" value="true" />
@@ -16,11 +14,11 @@
   <component name="ExecutionTargetManager" SELECTED_TARGET="default_target" />
   <component name="FileEditorManager">
     <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
-      <file leaf-file-name="ilqr_core.py" pinned="false" current-in-tab="false">
+      <file leaf-file-name="ilqr_core.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/ilqr_core.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="-931">
-              <caret line="86" column="33" lean-forward="false" selection-start-line="86" selection-start-column="33" selection-end-line="86" selection-end-column="33" />
+            <state relative-caret-position="457">
+              <caret line="329" column="50" lean-forward="false" selection-start-line="329" selection-start-column="50" selection-end-line="329" selection-end-column="50" />
               <folding>
                 <element signature="e#0#10#0" expanded="true" />
               </folding>
@@ -28,11 +26,11 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="ilqr_dynamics.py" pinned="false" current-in-tab="true">
+      <file leaf-file-name="ilqr_dynamics.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/ilqr_dynamics.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="1749">
-              <caret line="375" column="56" lean-forward="true" selection-start-line="375" selection-start-column="56" selection-end-line="375" selection-end-column="56" />
+            <state relative-caret-position="2224">
+              <caret line="363" column="9" lean-forward="true" selection-start-line="363" selection-start-column="9" selection-end-line="363" selection-end-column="9" />
               <folding>
                 <element signature="e#0#10#0" expanded="true" />
               </folding>
@@ -85,18 +83,18 @@
   <component name="IdeDocumentHistory">
     <option name="CHANGED_PATHS">
       <list>
-        <option value="$PROJECT_DIR$/ilqr_core.py" />
         <option value="$PROJECT_DIR$/autograd.py" />
         <option value="$PROJECT_DIR$/ilqr_cost.py" />
         <option value="$PROJECT_DIR$/diff_utils.py" />
         <option value="$PROJECT_DIR$/ilqr_dynamics.py" />
+        <option value="$PROJECT_DIR$/ilqr_core.py" />
       </list>
     </option>
   </component>
   <component name="ProjectFrameBounds">
-    <option name="x" value="117" />
-    <option name="y" value="73" />
-    <option name="width" value="1301" />
+    <option name="x" value="-328" />
+    <option name="y" value="115" />
+    <option name="width" value="1512" />
     <option name="height" value="965" />
   </component>
   <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
@@ -266,10 +264,10 @@
     <servers />
   </component>
   <component name="ToolWindowManager">
-    <frame x="117" y="73" width="1301" height="965" extended-state="0" />
+    <frame x="-328" y="115" width="1512" height="965" extended-state="0" />
     <editor active="true" />
     <layout>
-      <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.30207533" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
+      <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.25992063" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
       <window_info id="TODO" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="6" side_tool="false" content_ui="tabs" />
       <window_info id="Event Log" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="7" side_tool="true" content_ui="tabs" />
       <window_info id="Run" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.25288683" sideWeight="0.5" order="2" side_tool="false" content_ui="tabs" />
@@ -401,16 +399,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/ilqr_core.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-931">
-          <caret line="86" column="33" lean-forward="false" selection-start-line="86" selection-start-column="33" selection-end-line="86" selection-end-column="33" />
-          <folding>
-            <element signature="e#0#10#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/ilqr_cost.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="6441">
@@ -433,8 +421,18 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/ilqr_dynamics.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="1749">
-          <caret line="375" column="56" lean-forward="true" selection-start-line="375" selection-start-column="56" selection-end-line="375" selection-end-column="56" />
+        <state relative-caret-position="2224">
+          <caret line="363" column="9" lean-forward="true" selection-start-line="363" selection-start-column="9" selection-end-line="363" selection-end-column="9" />
+          <folding>
+            <element signature="e#0#10#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/ilqr_core.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="457">
+          <caret line="329" column="50" lean-forward="false" selection-start-line="329" selection-start-column="50" selection-end-line="329" selection-end-column="50" />
           <folding>
             <element signature="e#0#10#0" expanded="true" />
           </folding>

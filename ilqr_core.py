@@ -178,7 +178,7 @@ class iLQR(BaseTrajOptimizer):
         J = sum(J) + self.cost.l(xs[-1], None, self.N, terminal=True)
         return J
 
-    def update_u(self, x0, u_seq_init, n_interations=200, tolerance=1e-6, on_iteration=None, line_search_steps=10):
+    def update_u(self, x0, u_seq_init, n_interations=100, tolerance=1e-6, on_iteration=None, line_search_steps=10):
         """
         Update the optimzal control sequence
         :param x0: Initial State [state_dimension]
@@ -261,9 +261,73 @@ class iLQR(BaseTrajOptimizer):
         self.nominal_xs_ = xs
         self.nominal_us_ = us
 
+class RecedingHorizonController(object):
+    """
+    Receding horizon controller for model predictive control
+    """
+    def __init__(self, x0, u_seq_init, controller):
+        """
+        
+        :param x0:initial state [state_dim_] 
+        :param controller: controller to be updated 
+        """
+        self.x_ = x0
+        self.us_ = u_seq_init
+        self.controller_ = controller
 
+    def set_state(self, x):
+        """
+        Set the current state of the 
+        :param x: current state [state_dim_]
+        :return: 
+        """
+        self.x_ = x
 
+    def control(self, step_size=1,
+                initial_n_iterations=100, subsequent_n_iterations=5,
+                *args, **kwargs):
+        """
+        Compute the optimal control command for every step as a 
+        receding horizon planning problem 
+        
+        Note: The first iteration will be slow, but the successive ones will be
+        significantly faster. (warm start)
+        
+        Note: This will automatically move the current controller's state to
+        what the dynamics model believes will be the next state after applying
+        the entire control path computed. Should you want to correct this state
+        between iterations, simply use the `set_state()` method.
+        
+        Note: If your cost or dynamics are time dependent, then you might need
+        to shift their internal state accordingly.
+        
+        :param u_seq_init: initial control command sequence [N, control_dim_] 
+        :param step_size: Number of steps between each controller fit. Default: 1.
+                          i.e. re-fit at every time step. You might need to increase this
+                          depending on how powerful your machine is in order to run this
+                          in real-time.
+        :param initial_n_iterations: Initial max number of iterations to fit.
+                                     Default: 100.
+        :param subsequent_n_iterations: Subsequent max number of iterations to
+                                        fit. Default: 1.
+        :param args: xs: optimal state path [step_size+1, state_dim_].
+                         optimal control path [step_size, control_dim_]
+        :param kwargs: 
+        :return: 
+        """
+        control_dim_ = self.controller_.dynamics.state_dimension
+        n_iterations = initial_n_iterations
+        while True:
+            xs, us = self.controller_.update(self.xs_, self.us_, n_iterations=n_iterations, *args, **kwargs)
+            self.xs_ = xs[step_size]
+            yield xs[:step_size + 1], us[:step_size]
 
+            # Set up next action path seed by simply moving along the current
+            # optimal path and appending random unoptimal values at the end.
+            us_start = us[step_size:]
+            us_end = us[-step_size:]
+            self.us_ = np.vstack([us_start, us_end])
+            n_iterations = subsequent_n_iterations
 
 alphas = 1.1**(-np.arange(10)**2)
 print np.shape(alphas)
