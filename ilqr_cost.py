@@ -1,9 +1,10 @@
+from __future__ import absolute_import
 import six
 import abc
-from autograd import grad, jacobian
 import numpy as onp
 import autograd.numpy as np
 from scipy import optimize
+from diff_utils import jacobian_scalar, hessian_scalar
 
 @six.add_metaclass(abc.ABCMeta)
 class Cost():
@@ -220,33 +221,36 @@ class AutogradCost(Cost):
         self.l_terminal_ = l_terminal
         self.i_ = i
 
-        t_inv_inputs = np.hstack([x, u]).tolist()
-        t_inputs = np.hstack([x, u, i]).tolist()
-        terminal_inputs = np.hstack([x, i]).tolist()
+        t_inv_inputs = np.hstack([x, u])
+        t_inputs = np.hstack([x, u, i])
+        terminal_inputs = np.hstack([x, i])
         self.x_input_ = x
         self.u_input_ = u
         self.t_inputs_ = t_inputs
         self.t_inv_inputs_ = t_inv_inputs
 
-        self.state_dimension_ = len(x)
-        self.control_dimension_ = len(u)
+        self.state_dim_ = len(x)
+        self.control_dim_ = len(u)
 
-        self._J = jacobian_scalar(l, t_inv_inputs)
-        self._Q = hessian_scalar(l, t_inv_inputs)
+        self._J = jacobian_scalar(l, t_inv_inputs, self.state_dim_, self.control_dim_) #[jacobian_x, jacobian_u]
+        self._Q = hessian_scalar(l, t_inv_inputs, self.state_dim_, self.control_dim_) #[hessian_xx, hessian_ux, hessian_uu]
 
-        self._l = as_function(f, t_inputs, name='l', **kwargs)
-        self._l_x = as_function(self._J[:self.state_dim_], t_inputs, name='l_x', **kwargs)
-        self._l_u = as_function(self._J[self.state_dim_:], t_inputs, name='l_u', **kwargs)
-        self._l_xx = as_function(self._Q[:self.state_dim_, :self.state_dim_], t_inputs, name='l_xx', **kwargs)
-        self._l_ux = as_function(self._Q[self.state_dim_:, :self.state_dim_], t_inputs, name='l_ux', **kwargs)
-        self._l_uu = as_function(self._Q[self.state_dim_:, self.state_dim_:], t_inputs, name='l_uu', **kwargs)
+        self._l = l
+        self._l_x = self._J[0]
+        self._l_u = self._J[1]
+        self._l_xx = self._Q[0]
+        self._l_ux = self._Q[1]
+        self._l_uu = self._Q[2]
 
-        self._J_terminal = jacobian_scalar(l_terminal, t_inputs)
-        self._Q_terminal = hessian_scalar(l_terminal, t_inputs)
 
-        self._l_terminal = as_function(l_terminal, terminal_inputs, name='l_term', **kwargs)
-        self._l_x_terminal = as_function(self._J_terminal[:self.state_dim_], terminal_inputs, name='l_term_x', **kwargs)
-        self._l_xx_terminal = as_function(self._Q[:self.state_dim_, :self.state_dim_], terminal_inputs, name='l_term_xx', **kwargs)
+        self._J_terminal = jacobian_scalar(l_terminal, t_inputs, self.state_dim_, self.control_dim_)
+        self._Q_terminal = hessian_scalar(l_terminal, t_inputs, self.state_dim_, self.control_dim_)
+
+
+        self._l_terminal = l_terminal
+        self._l_x_terminal = self._J_terminal[0] #[jacobian_x]
+        self._l_xx_terminal = self._Q_terminal[0] #[hessian_xx]
+
 
 
         super(AutogradCost, self).__init__()
@@ -276,8 +280,8 @@ class AutogradCost(Cost):
         :return: 
         """
         if terminal:
-            return onp.asscalar(self._l_terminal(*np.hstack([x, i])))
-        return onp.asscalar(self._l(*np.hstack([x, u, i])))
+            return onp.asscalar(self._l_terminal(x, u, i))
+        return onp.asscalar(self._l_terminal(x, u))
 
 
     def l_x(self, x, u, i, terminal=False):
@@ -290,8 +294,8 @@ class AutogradCost(Cost):
         :return: dl/dx [state_dimension]
         """
         if terminal:
-            return self._l_x_terminal(*np.hstack([x, i]))
-        return self._l_x(*np.hstack([x, u, i]))
+            return self._l_x_terminal(x, u, i)
+        return self._l_x(x, u)
 
     def l_u(self, x, u, i, terminal=False):
         """
@@ -303,8 +307,8 @@ class AutogradCost(Cost):
         :return: dl/du [control_dimension]
         """
         if terminal:
-            return onp.zeros(self.control_dimension_)
-        return self._l_u(*np.hstack([x, u, i]))
+            return onp.zeros(self.control_dim_)
+        return self._l_u(x, u)
 
     def l_xx(self, x, u, i, terminal=False):
         """
@@ -316,8 +320,8 @@ class AutogradCost(Cost):
         :return: d^2l/du^2 [state_dimension, state_dimension]
         """
         if terminal:
-            return self._l_xx_terminal(*np.hstack([x, i]))
-        return self._l_xx(*np.hstack([x, u, i]))
+            return self._l_xx_terminal(x, u, i)
+        return self._l_xx_(x, u)
 
     def l_ux(self, x, u, i, terminal=False):
         """
@@ -329,8 +333,8 @@ class AutogradCost(Cost):
         :return: d^2l/dudx [control_dimension, state_dimension]
         """
         if terminal:
-            return onp.zeros((self.state_dimension_, self.control_dimension_))
-        return self._l_ux(*np.hstack([x, u, i]))
+            return onp.zeros((self.control_dim_, self.state_dim_))
+        return self._l_ux(x, u)
 
     @abc.abstractmethod
     def l_uu(self, x, u, i, terminal=False):
@@ -343,5 +347,5 @@ class AutogradCost(Cost):
         :return: d^2l/dudu [control_dimension, control_dimension]
         """
         if terminal:
-            return onp.zeros((self.control_dimension_, self.control_dimension_))
-        return self._l_uu(*np.hstack([x, u, i]))
+            return onp.zeros((self.control_dim_, self.control_dim_))
+        return self._l_uu(x, u)

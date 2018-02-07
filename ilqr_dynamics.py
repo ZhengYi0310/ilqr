@@ -1,5 +1,6 @@
 import six
 import abc
+from scipy import optimize
 from autograd import grad, jacobian
 import numpy as onp
 import autograd.numpy as np
