@@ -39,7 +39,7 @@ def on_iteration(iteration_count, xs, us, J_opt, accepted, converged):
     final_state = dynamics.reduce_state(xs[-1])
     print("iteration", iteration_count, info, J_opt, final_state)
 
-    
+
 xs, us = ilqr.fit(x0, us_init, n_iterations=500, on_iteration=on_iteration)
 
 # Reduce the state to something more reasonable.
