@@ -8,6 +8,7 @@ import warnings
 from ilqr_boxQP import boxQP
 import scipy.linalg as sla
 
+
 @six.add_metaclass(abc.ABCMeta)
 class BaseTrajOptimizer():
     """
@@ -28,7 +29,7 @@ class BaseTrajOptimizer():
 
 class iLQR(BaseTrajOptimizer):
     """Finite Horizon Iterative Linear Quadratic Regulator"""
-    def __init__(self, sys_dynamics, cost_func, time_steps, max_reg = 1e10, control_limit=False, use_second_order=False):
+    def __init__(self, sys_dynamics, cost_func, time_steps=15, max_reg = 1e10, control_limit=True, use_second_order=False):
         """
         Construct a iLQR solver 
         :param sys_dynamics: dynamics model of the system
@@ -42,14 +43,14 @@ class iLQR(BaseTrajOptimizer):
         self.dynamics = sys_dynamics
         self.cost = cost_func
         self.N = time_steps
-        self.control_limit = False
+        self.control_limit = control_limit
 
-        if control_limit is True:
+        if self.control_limit is True:
             self.lower_bound = self.dynamics.lower_bound
             self.upper_bound = self.dynamics.upper_bound
-            self.control_limit = True
-        self.use_second_order_ = (use_second_order and self.dynamics.has_hessians)
-        if use_second_order and not self.dynamics.has_hessians:
+
+        self.use_second_order_ = (use_second_order and self.dynamics.use_second_order)
+        if use_second_order and not self.dynamics.use_second_order:
             warnings.warn("hessians requested but are unavailable in dynamics")
 
         # regularization terms, see Y.Tassa, T.Erez, E.Todorov, "Synthesis and stablization of
@@ -62,8 +63,6 @@ class iLQR(BaseTrajOptimizer):
 
         self.k_ = np.zeros((self.N, self.dynamics.control_dimension))
         self.K_ = np.zeros((self.N, self.dynamics.control_dimension, self.dynamics.state_dimension))
-
-        #TODO initialize the initial normial trajecotry
 
         super(iLQR, self).__init__()
 
@@ -78,8 +77,10 @@ class iLQR(BaseTrajOptimizer):
         assert np.shape(us)[0] == self.N, 'The length of control sequence should {}, yet is ' \
                                           '{} instead.'.format(self.N, np.shape(us)[0])
         for i in range(0, self.N):
-            xs_next = self.dynamics.fx(xs[-1], us[i], i)
-            xs = np.append(xs, xs_next, axis=0)
+            xs_next = self.dynamics.f(xs[-1], us[i], i)
+            # xs = np.append(xs, xs_next, axis=0)
+            xs = np.append(xs, [xs_next], axis=0)
+        return xs
 
     def _forward_pass(self, xs, us, k, K, alpha=1):
         """
@@ -101,7 +102,9 @@ class iLQR(BaseTrajOptimizer):
 
         for i in range(0, self.N ):
             us_new[i] = us[i] + alpha * k[i] + np.dot(K[i], xs_new[i] - xs[i])
-            xs_new[i+1] = self.dynamics.fx(xs_new[i], us_new[i], i)
+            xs_new[i+1] = self.dynamics.f(xs_new[i], us_new[i], i)
+
+        return xs_new, us_new
 
     def _backward_pass(self, us, xs):
         """
@@ -122,12 +125,21 @@ class iLQR(BaseTrajOptimizer):
             upper_bound = self.upper_bound
 
         for i in range(self.N - 1, -1, -1):
-            x = xs[i]
-            u = us[i]
+            # x = xs[i]
+            # u = us[i]
+            x = xs[i, :]
+            u = us[i, :]
+            # print ("x{}".format(x.shape))
+            # print ("u{}".format(u.shape))
 
             Q_x, Q_u, Q_xx, Q_ux, Q_uu = self._compute_Q_terms(x, u, V_x, V_xx, i)
             #Q_uu_inv = np.linalg.pinv(Q_uu)  # TODO use svd to avoid singularity ?
+            if (not np.all(np.linalg.eigvals(Q_uu) > 0)):
+                print Q_uu
+                warnings.warn("Quu not PD!")
+                break
             R_Q_uu = sla.cholesky(Q_uu, lower=True)
+
 
             # the regularized version
             k[i] = sla.cho_solve((R_Q_uu, True), Q_u)#np.dot(-Q_uu_inv, Q_u)
@@ -135,17 +147,17 @@ class iLQR(BaseTrajOptimizer):
 
             if self.control_limit is True:
                 # Solving the box constraint using QP
-                assert (u.shape == lower_bound.shape), "the shape of control signal{} and control signal lower bound{} is not the same".format(u.shape, lower_bound.shape)
-                assert (u.shape == upper_bound.shape), "the shape of control signal{} and control signal upper bound{} is not the same".format(u.shape, upper_bound.shape)
+                assert (np.array(u).shape == np.array(lower_bound).shape), "the shape of control signal{} and control signal lower bound{} is not the same".format(np.array(u).shape,  np.array(lower_bound).shape)
+                assert (np.array(u).shape == np.array(upper_bound).shape), "the shape of control signal{} and control signal upper bound{} is not the same".format(np.array(u).shape,  np.array(upper_bound).shape)
                 delta_lower = lower_bound - u
                 delta_upper = upper_bound - u
                 kwargs = {'maxIter': 100, 'minGrad': 1e-8, 'minRelImprove': 1e-8, 'stepDec': 0.9, 'minStep': 1e-22,
-                          'Armijo': 0.1, 'verbose': 1}
+                          'Armijo': 0.1, 'verbose': 0}
                 k[i], result, Q_uu_ff, free = boxQP(Q_uu, Q_u.T, delta_lower, delta_upper, k[i], **kwargs)
                 if free.any():
                     Q_ux_free = Q_ux[free, :]
                     L_free = sla.cho_solve((Q_uu_ff, True), Q_ux_free) * -1
-                    K[free, :] = L_free
+                    K[i, free, :] = L_free
             else:
                 K[i] = sla.cho_solve((R_Q_uu, True), Q_ux)  # np.dot(-Q_uu_inv, Q_ux)
 
@@ -156,12 +168,12 @@ class iLQR(BaseTrajOptimizer):
                    + np.dot(Q_ux.T, K[i])
             V_xx = 0.5 * (V_xx + V_xx.T)
 
-            print ("V_x{}".format(V_x.shape))
-            print ("V_xx{}".format(V_xx.shape))
+            # print ("V_x{}".format(V_x.shape))
+            # print ("V_xx{}".format(V_xx.shape))
 
 
             Delta_J1 += np.dot(k[i].T, Q_u)
-            Delta_J2 += np.dot(k[i].T, np.dot(Q_uu), k[i])
+            Delta_J2 += np.dot(k[i].T, np.dot(Q_uu, k[i])) * 0.5
         return np.array(k), np.array(K), Delta_J1, Delta_J2
 
     def _compute_Q_terms(self, x, u, V_x, V_xx, i):
@@ -176,12 +188,20 @@ class iLQR(BaseTrajOptimizer):
         """
         f_x = self.dynamics.f_x(x, u, i)
         f_u = self.dynamics.f_u(x, u, i)
+        # print ("f_x{}".format(f_x.shape))
+        # print ("f_u{}".format(f_u.shape))
 
         l_x = self.cost.l_x(x, u, i)
         l_u = self.cost.l_u(x, u, i)
         l_xx = self.cost.l_xx(x, u, i)
         l_ux = self.cost.l_ux(x, u, i)
         l_uu = self.cost.l_uu(x, u, i)
+
+        # print ("l_x{}".format(l_x.shape))
+        # print ("l_u{}".format(l_u.shape))
+        # print ("l_xx{}".format(l_xx.shape))
+        # print ("l_ux{}".format(l_ux.shape))
+        # print ("l_uu{}".format(l_uu.shape))
 
         Q_x = l_x + np.dot(f_x.T, V_x)
         Q_u = l_u + np.dot(f_u.T, V_x)
@@ -190,6 +210,12 @@ class iLQR(BaseTrajOptimizer):
         reg = V_xx + self.mu_ * np.eye(self.dynamics.state_dimension)
         Q_ux = l_ux + np.dot(np.dot(f_u.T, reg), f_x)
         Q_uu = l_uu + np.dot(np.dot(f_u.T, reg), f_u)
+
+        # print ("Q_x{}".format(Q_x.shape))
+        # print ("Q_u{}".format(Q_u.shape))
+        # print ("Q_xx{}".format(Q_xx.shape))
+        # print ("Q_ux{}".format(Q_ux.shape))
+        # print ("Q_uu{}".format(Q_uu.shape))
 
         if self.use_second_order_:
             f_xx = self.dynamics.f_xx(x, u, i)
@@ -208,11 +234,11 @@ class iLQR(BaseTrajOptimizer):
         :param xs: state seq [N+1, state_dimension] 
         :return: 
         """
-        J = map(lambda args: self.cost.l(*args), zip(xs[-1], us, range(0, self.N)))
+        J = map(lambda args: self.cost.l(*args), zip(xs[:-1], us, range(0, self.N)))
         J = sum(J) + self.cost.l(xs[-1], None, self.N, terminal=True)
         return J
 
-    def update_u(self, x0, u_seq_init, n_interations=100, tolerance=1e-6, on_iteration=None, line_search_steps=10):
+    def update_u(self, x0, u_seq_init, n_interations=200, tolerance=1e-4, on_iteration=None, line_search_steps=30, scale=0.1):
         """
         Update the optimzal control sequence
         :param x0: Initial State [state_dimension]
@@ -236,76 +262,152 @@ class iLQR(BaseTrajOptimizer):
 
         #reset the Tikhonov regularization term
         self.mu_ = 1.0
+
         # Backtracking line search candidates 0 < alpha <= 1. (naively set)
         alphas = 1.1 ** (-np.arange(line_search_steps) ** 2)
 
         us = u_seq_init.copy()
         xs = self._dynamics_rollout(x0, us)
-        J_opt = self._trajectory_cost(us, xs)
-        #k = self.k_
-        #K = self.K_
+        J_opt = self._trajectory_cost(xs, us)
+        k = self.k_
+        K = self.K_
+
+        us_new = np.zeros_like(us)
+        xs_new = np.zeros_like(xs)
+        J_opt_new = 0
+        Delta_J1 = 0
+        Delta_J2 =0
+        expected_delta_J = 0
+        actual_delta_J = 0
 
         converged = False
         for iteration in range(0, n_interations):
             accepted = False
-            try:
-                k, K = self._backward_pass(us, xs)
+            backward_pass_done = False
+            while not (backward_pass_done):
+                try:
+                    k, K, Delta_J1, Delta_J2 = self._backward_pass(us, xs)
+                    backward_pass_done = True
+                except np.linalg.LinAlgError as e:
+                    # Quu was not PD and this diverged.
+                    # Try again with a higher regularization term.
+                    warnings.warn(str(e))
+                    self.delta_ = max(self.delta_, 1.) * self.delta_0_
+                    self.mu_ = max(self.mu_min_, self.mu_ * self.delta_)
+                    if self.mu_max_ and self.mu_ >= self.mu_max_:
+                        warnings.warn("exceeded max regularization term during backward pass!")
+                        break
 
-                #Backtracking Line search
-                for alpha in alphas:
-                    xs_new, us_new = self._forward_pass(xs, us, k, K, alpha)
-                    J_opt_new = self._trajectory_cost(xs_new, us_new)
+            for alpha in alphas:
+                xs_new, us_new = self._forward_pass(xs, us, k, K, alpha)
+                J_opt_new = self._trajectory_cost(xs_new, us_new)
 
-                    # TODO Comparing the actual reduction and expected reduction ?
-                    #expected_delta_J = alpha * np.dot(self.k_[:-1].Transpose(), self.Qu_)
-                    if J_opt_new < J_opt:
-
-                        if np.abs((J_opt_new - J_opt) / J_opt) < tolerance:
-                            converged = True
-                        J_opt = J_opt_new
-                        xs = xs_new
-                        us = us_new
-
-                        # Decrease the regularization term
-                        self.delta_ = min(1., self.delta_0_) / self.delta_
-                        self.mu_ *= self.delta_
-                        if (self.mu_) <= self.mu_min_:
-                            self.mu_ = 0
+                expected_delta_J = (alpha * Delta_J1 + alpha ** 2  * Delta_J2) * -1
+                if (expected_delta_J <= 0):
+                    warnings.warn("The expected reduction of J is negative, this should never occur!")
+                    break
+                else:
+                    if ((J_opt - J_opt_new) / expected_delta_J) > scale:
+                        actual_delta_J = J_opt - J_opt_new
                         accepted = True
                         break
-            except np.linalg.LinAlgError as e:
-                # Quu was not PD and this diverged.
-                # Try again with a higher regularization term.
-                warnings.warn(str(e))
 
-            if not accepted:
+            if accepted == True:
+                # decrease mu
+                self.delta_ = min(1., self.delta_) / self.delta_0_
+                self.mu_ *= self.delta_
+                if (self.mu_) <= self.mu_min_:
+                    self.mu_ = 0
+
+                J_opt = J_opt_new
+                xs = xs_new
+                us = us_new
+
+
+                if actual_delta_J < tolerance:
+                    print J_opt
+                    print J_opt_new
+                    print J_opt_new - J_opt
+                    converged = True
+
+            else:
+                #increase mu
                 self.delta_ = max(self.delta_, 1.) * self.delta_0_
                 self.mu_ = max(self.mu_min_, self.mu_ * self.delta_)
-                if self._mu_max and self._mu >= self._mu_max:
-                    warnings.warn("exceeded max regularization term")
+                if self.mu_max_ and self.mu_ >= self.mu_max_:
+                    warnings.warn("exceeded max regularization term during line search")
                     break
 
+
             if on_iteration:
+                # print ("xs{}".format(xs.shape))
+                # print ("us{}".format(us.shape))
                 on_iteration(iteration, xs, us, J_opt, accepted, converged)
 
             if converged:
                 break
+
+                # # Backtracking Line search
+                # for alpha in alphas:
+                #     xs_new, us_new = self._forward_pass(xs, us, k, K, alpha)
+                #     J_opt_new = self._trajectory_cost(xs_new, us_new)
+                #
+                #     expected_delta_J = alpha * Delta_J1 + alpha ** 2 / 2 * Delta_J2
+                #     if (expected_delta_J <= 0):
+                #         raise Warning("The expected reduction of J is negative, this should never occur")
+                #
+                #     # expected_delta_J = alpha * np.dot(self.k_[:-1].Transpose(), self.Qu_)
+                #     else:
+                #         # if J_opt_new < J_opt:
+                #         # if np.abs((J_opt_new - J_opt) / J_opt) < tolerance:
+                #         if np.abs((J_opt - J_opt_new) / expected_delta_J) > scale:
+                #             break # line search is done
+                #         J_opt = J_opt_new
+                #         xs = xs_new
+                #         us = us_new
+                #
+                #         # Decrease the regularization term
+                #         self.delta_ = min(1., self.delta_) / self.delta_0_
+                #         self.mu_ *= self.delta_
+                #         if (self.mu_) <= self.mu_min_:
+                #             self.mu_ = 0
+                #         accepted = True
+                #         break
+
+            # except np.linalg.LinAlgError as e:
+            #     # Quu was not PD and this diverged.
+            #     # Try again with a higher regularization term.
+            #     warnings.warn(str(e))
+
+            # if not accepted:
+            #     self.delta_ = max(self.delta_, 1.) * self.delta_0_
+            #     self.mu_ = max(self.mu_min_, self.mu_ * self.delta_)
+            #     if self._mu_max and self._mu >= self._mu_max:
+            #         warnings.warn("exceeded max regularization term")
+            #         break
+
+            # if on_iteration:
+            #     on_iteration(iteration, xs, us, J_opt, accepted, converged)
+            #
+            # if converged:
+            #     break
         self.k_ = k
         self.K_ = K
         self.nominal_xs_ = xs
         self.nominal_us_ = us
 
+        return xs, us
 class RecedingHorizonController(object):
     """
     Receding horizon controller for model predictive control
     """
-    def __init__(self, x0, u_seq_init, controller):
+    def __init__(self, x0, u_seq_init, controller, env):
         """
         
         :param x0:initial state [state_dim_] 
         :param controller: controller to be updated 
         """
-        self.x_ = x0
+        self.xs_ = x0
         self.us_ = u_seq_init
         self.controller_ = controller
 
@@ -315,10 +417,10 @@ class RecedingHorizonController(object):
         :param x: current state [state_dim_]
         :return: 
         """
-        self.x_ = x
+        self.xs_ = x
 
     def control(self, step_size=1,
-                initial_n_iterations=100, subsequent_n_iterations=5,
+                initial_n_iterations=200, subsequent_n_iterations=10,
                 *args, **kwargs):
         """
         Compute the optimal control command for every step as a 
@@ -352,7 +454,7 @@ class RecedingHorizonController(object):
         control_dim_ = self.controller_.dynamics.state_dimension
         n_iterations = initial_n_iterations
         while True:
-            xs, us = self.controller_.update(self.xs_, self.us_, n_iterations=n_iterations, *args, **kwargs)
+            xs, us = self.controller_.update_u(self.xs_, self.us_, n_iterations=n_iterations, *args, **kwargs)
             self.xs_ = xs[step_size]
             yield xs[:step_size + 1], us[:step_size]
 
@@ -363,13 +465,13 @@ class RecedingHorizonController(object):
             self.us_ = np.vstack([us_start, us_end])
             n_iterations = subsequent_n_iterations
 
-alphas = 1.1**(-np.arange(10)**2)
-print np.shape(alphas)
-print np.shape(alphas[:-1])
-a = np.zeros_like(alphas)
-a[0] = alphas[0]
-
-
-b = range(-100, 0)
-zipped = zip(a, b)
-print type(a)
+# alphas = 1.1**(-np.arange(10)**2)
+# print np.shape(alphas)
+# print np.shape(alphas[:-1])
+# a = np.zeros_like(alphas)
+# a[0] = alphas[0]
+#
+#
+# b = range(-100, 0)
+# zipped = zip(a, b)
+# print type(a)

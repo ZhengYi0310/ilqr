@@ -55,7 +55,8 @@ def boxQP(H, g, lower, upper, x0=None, *args, **kwargs):
     Optdict = {'maxIter': 100, 'minGrad': 1e-8, 'minRelImprove':1e-8, 'stepDec':0.6,  'minStep': 1e-22, 'Armijo': 0.1, 'verbose': 0}
     if kwargs is not None:
         for key, value in kwargs.iteritems():
-            print("reset  {} == {}".format(key, value))
+
+            #print("reset  {} == {}".format(key, value))
             Optdict[str(key)] = value
 
     currentvalue = np.dot(x.T, g) + 0.5 * np.dot(np.dot(x.T, H), x)
@@ -179,23 +180,23 @@ def boxQP(H, g, lower, upper, x0=None, *args, **kwargs):
                'All dimensions are clamped'] # result = 6
 
     if Optdict['verbose'] > 0:
-        print('RESULT: {}.\niterations {}  gradient {} final value {}  factorizations {}\n'.format(
+        print('RESULT({}): {}.\niterations {}  gradient {} final value {}  factorizations {}\n'.format(result,
         results[result+1], total_iter, gnorm, currentvalue, nfactor))
 
     return x, result, H_ff, free
 
 
 
-kwargs = {'maxIter': 100, 'minGrad': 1e-8,  'minRelImprove':1e-8,  'stepDec':0.9,  'minStep': 1e-22,  'Armijo': 0.1,  'verbose': 1}
-n 		= 4
-g 		= np.random.randn(n, )
-H 		= np.random.randn(n, n)
-H 		= np.dot(H.T, H)
-lower 	= -np.ones((n, ), dtype=np.float64) * 10
-upper 	=  np.ones((n, ), dtype=np.float64) * 10
-import time
-start_time = time.time()
-x, result, H_ff, free = boxQP(H, g, lower, upper, np.random.randn(n, ), **kwargs)
-print free
-print("solving QP...., takes about {:.5}s".format(str(time.time() - start_time)))
-print result
+# kwargs = {'maxIter': 100, 'minGrad': 1e-8,  'minRelImprove':1e-8,  'stepDec':0.9,  'minStep': 1e-22,  'Armijo': 0.1,  'verbose': 1}
+# n 		= 6
+# g 		= np.random.randn(n, )
+# H 		= np.random.randn(n, n)
+# H 		= np.dot(H.T, H)
+# lower 	= -np.ones((n, ), dtype=np.float64) * 10
+# upper 	=  np.ones((n, ), dtype=np.float64) * 10
+# import time
+# start_time = time.time()
+# x, result, H_ff, free = boxQP(H, g, lower, upper, np.random.randn(n, ), **kwargs)
+# print free
+# print("solving QP...., takes about {:.5}s".format(str(time.time() - start_time)))
+# print result

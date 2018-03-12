@@ -5,6 +5,8 @@ from autograd import grad, jacobian
 import numpy as onp
 import autograd.numpy as np
 from scipy import optimize
+from .diff_utils import as_function, hessian_vector, jacobian_vector
+import theano.tensor as T
 
 
 
@@ -206,12 +208,188 @@ class FiniteDifferenceDynamics(Dynamics):
                      ] for m in range(0, self.control_dimension_))
         return Q
 
+# class AutogradDynamics(Dynamics):
+#     """
+#     dynamic model with auto differentiation
+#     """
+#
+#     def __init__(self, f, x, u, i=None, use_second_order=False, **kwargs):
+#         """
+#         Contruct a dynamics model with auto differentiation
+#         :param f: function to be auto differentiated
+#         :param x: state [state_dimension]
+#         :param u: contrl [control_dimension]
+#         :param dt: time step variable
+#         :param use_second_order: Evaluate the dynamic model's second order derivatives.
+#                 Default: only use first order derivatives. (i.e. iLQR instead
+#                 of DDP).
+#         :param kwargs: Additional keyword-arguments to pass to autograd functions
+#         """
+#         self.f_ = f
+#         self.i_ = i
+#
+#         t_inv_inputs = np.hstack([x, u])
+#         t_inputs = np.hstack([x, u, i])
+#         self.x_input_ = x
+#         self.u_input_ = u
+#         self.t_inputs_ = t_inputs
+#         self.t_inv_inputs_ = t_inv_inputs
+#
+#         self.state_dimension_ = len(x)
+#         self.control_dimension_ = len(u)
+#
+#         #self._J = jacobian_vector(f, t_inv_inputs, self.state_dimension_, self.control_dimension_)
+#         self._f = f
+#         self._f_x = jacobian(self._f, 0)
+#         self._f_u = jacobian(self._f, 1)
+#         self._i = i
+#
+#         self.use_second_order_ = use_second_order
+#         if use_second_order:
+#             #self._Q = hessian_vector(f, t_inv_inputs, self.state_dimension_, self.control_dimension_)
+#             self._f_xx = jacobian(self._f_x, 0)
+#             self._f_ux = jacobian(self._f_u, 0)
+#             self._f_uu = jacobian(self._f_u, 1)
+#
+#         super(AutogradDynamics, self).__init__()
+#
+#     @property
+#     def state_dimension(self):
+#         """State Dimension"""
+#         return self.state_dimension_
+#
+#     @property
+#     def control_dimension(self):
+#         """Control Dimension"""
+#         return self.control_dimension_
+#
+#     @property
+#     def x(self):
+#         """The state variables."""
+#         return self._x_input_
+#
+#     @property
+#     def u(self):
+#         """The control variables."""
+#         return self._u_input_
+#
+#     @property
+#     def i(self):
+#         """The time step variable."""
+#         return self.i_
+#
+#     @property
+#     def has_hessians(self):
+#         """Whether the second order expansions are available"""
+#         return self.use_second_order_
+#
+#     def f(self, x, u, i):
+#         """
+#         x_dot = f(x, u, i)
+#         :param x: state [state_dimension]
+#         :param u: control [control_dimension]
+#         :param i: current time stamp
+#         :return: state_next [state_dimension]
+#         """
+#         return np.array(self._f(x, u)).reshape((1, -1))
+#
+#     def f_x(self, x, u, i):
+#         """
+#         partial derivative of the dynamics w.r.t the state
+#         :param x: state [state_dimension]
+#         :param u: control [control_dimension]
+#         :param i: current time stamp
+#         :return: df/dx [state_dimension, state_dimension]
+#         """
+#         #array_jacobian_state =np.array(self._f_x[0](x, u))
+#         #assert (self.state_dimension_ == len(self._f_x)), "the state vector has length {}, yet the " \
+#         #                                                  "returned jacobian has length {}".format(self.state_dimension_, len(self._f_x))
+#         #for k in range(1, self.state_dimension_):
+#         #    array_jacobian_state = np.vstack((array_jacobian_state, np.array(self._f_x[k](x, u))))
+#
+#         return self._f_x(x, u)#np.array(array_jacobian_state)
+#
+#     def f_u(self, x, u, i):
+#         """
+#         partial derivative of the dynamics w.r.t the control
+#         :param x: state [state_dimension]
+#         :param u: control [control_dimension]
+#         :param i: current time stamp
+#         :return: df/du [state_dimension, control_dimension]
+#         """
+#         #array_jacobian_control = np.array(self._f_x[0](x, u))
+#         #assert (self.state_dimension_ == len(self._f_u)), "the state vector has length {}, yet the " \
+#         #                                                  "returned jacobian has length {}".format(self.state_dimension_, len(self._f_x))
+#         #for k in range(1, self.state_dimension_):
+#         #    array_jacobian_control.vstack((array_jacobian_control, np.array(self._f_x[k](x, u))))
+#         return self._f_u(x, u)#np.array(array_jacobian_control)
+#
+#     def f_xx(self, x, u, i):
+#         """
+#         second partial derivative of the dynamics w.r.t the state
+#         :param x: state [state_dimension]
+#         :param u: control [control_dimension]
+#         :param i: current time stamp
+#         :return: d^2f/dx^2 [state_dimension, state_dimension, state_dimension]
+#         """
+#
+#         if not self.use_second_order_:
+#             raise NotImplementedError
+#         else:
+#             #list_hessian_xx = []
+#             #assert (self.state_dimension_ == len(self._f_xx)), "the state vector has length {}, yet the " \
+#             #                                                  "returned jacobian has length {}".format(
+#             #    self.state_dimension_, len(self._f_xx))
+#             #for k in range(0, self.state_dimension_):
+#             #    list_hessian_xx.append(np.array(self._f_xx[k](x, u)))
+#             return self._f_xx(x, u)#np.array(list_hessian_xx)
+#
+#
+#     def f_ux(self, x, u, i):
+#         """
+#         second partial derivative of the dynamics w.r.t the state and the control
+#         :param x: state [state_dimension]
+#         :param u: control [control_dimension]
+#         :param i: current time stamp
+#         :return: d^2f/dx^2 [state_dimension, control_dimension, state_dimension]
+#         """
+#         if not self.use_second_order_:
+#             raise NotImplementedError
+#         else:
+#             #list_hessian_ux = []
+#             #assert (self.state_dimension_ == len(self._f_ux)), "the state vector has length {}, yet the " \
+#             #                                                   "returned jacobian has length {}".format(
+#             #    self.state_dimension_, len(self._f_ux))
+#             #for k in range(0, self.state_dimension_):
+#             #    list_hessian_ux.append(np.array(self._f_ux[k](x, u)))
+#             return self._f_ux(x, u)#np.array(list_hessian_ux)
+#
+#     def f_uu(self, x, u, i):
+#         """
+#         second partial derivative of the dynamics w.r.t t the control
+#         :param x: state [state_dimension]
+#         :param u: control [control_dimension]
+#         :param i: current time stamp
+#         :return: d^2f/dx^2 [state_dimension, control_dimension, control_dimension]
+#         """
+#         if not self.use_second_order_:
+#             raise NotImplementedError
+#         else:
+#             #list_hessian_uu = []
+#             #assert (self.state_dimension_ == len(self._f_uu)), "the state vector has length {}, yet the " \
+#             #                                                   "returned jacobian has length {}".format(
+#             #    self.state_dimension_, len(self._f_ux))
+#             #for k in range(0, self.state_dimension_):
+#             #    list_hessian_uu.append(np.array(self._f_uu[k](x, u)))
+#             return self._f_uu(x, u)#np.array(list_hessian_uu)
+
+
 class AutogradDynamics(Dynamics):
     """
     dynamic model with auto differentiation 
     """
 
-    def __init__(self, f, x, u, i=None, use_second_order=False, **kwargs):
+    def __init__(self, f, x_inputs, u_inputs, i=None, use_second_order=False, **kwargs):
         """
         Contruct a dynamics model with auto differentiation 
         :param f: function to be auto differentiated 
@@ -223,31 +401,43 @@ class AutogradDynamics(Dynamics):
                 of DDP).
         :param kwargs: Additional keyword-arguments to pass to autograd functions 
         """
-        self.f_ = f
-        self.i_ = i
+        self._tensor = f
+        self._i = T.dscalar("i") if i is None else i
 
-        t_inv_inputs = np.hstack([x, u])
-        t_inputs = np.hstack([x, u, i])
-        self.x_input_ = x
-        self.u_input_ = u
-        self.t_inputs_ = t_inputs
-        self.t_inv_inputs_ = t_inv_inputs
+        non_t_inputs = np.hstack([x_inputs, u_inputs]).tolist()
+        inputs = np.hstack([x_inputs, u_inputs, self._i]).tolist()
+        self._x_inputs = x_inputs
+        self._u_inputs = u_inputs
+        self._inputs = inputs
+        self._non_t_inputs = non_t_inputs
 
-        self.state_dimension_ = len(x)
-        self.control_dimension_ = len(u)
+        x_dim = len(x_inputs)
+        u_dim = len(u_inputs)
+        self.state_dimension_ = x_dim
+        self.control_dimension_ = u_dim
 
-        #self._J = jacobian_vector(f, t_inv_inputs, self.state_dimension_, self.control_dimension_)
-        self._f = f
-        self._f_x = jacobian(self._f, 0)
-        self._f_u = jacobian(self._f, 1)
-        self._i = i
+        self._J = jacobian_vector(f, non_t_inputs, x_dim)
+
+        self._f = as_function(f, inputs, name="f", **kwargs)
+
+        self._f_x = as_function(
+            self._J[:, :x_dim], inputs, name="f_x", **kwargs)
+        self._f_u = as_function(
+            self._J[:, x_dim:], inputs, name="f_u", **kwargs)
 
         self.use_second_order_ = use_second_order
         if use_second_order:
             #self._Q = hessian_vector(f, t_inv_inputs, self.state_dimension_, self.control_dimension_)
-            self._f_xx = jacobian(self._f_x, 0)
-            self._f_ux = jacobian(self._f_u, 0)
-            self._f_uu = jacobian(self._f_u, 1)
+            # self._f_xx = jacobian(self._f_x, 0)
+            # self._f_ux = jacobian(self._f_u, 0)
+            # self._f_uu = jacobian(self._f_u, 1)
+            self._Q = hessian_vector(f, non_t_inputs, x_dim)
+            self._f_xx = as_function(
+                self._Q[:, :x_dim, :x_dim], inputs, name="f_xx", **kwargs)
+            self._f_ux = as_function(
+                self._Q[:, x_dim:, :x_dim], inputs, name="f_ux", **kwargs)
+            self._f_uu = as_function(
+                self._Q[:, x_dim:, x_dim:], inputs, name="f_uu", **kwargs)
 
         super(AutogradDynamics, self).__init__()
 
@@ -262,14 +452,19 @@ class AutogradDynamics(Dynamics):
         return self.control_dimension_
 
     @property
+    def tensor(self):
+        """The dynamics model variable."""
+        return self._tensor
+
+    @property
     def x(self):
         """The state variables."""
-        return self._x_input_
+        return self._x_inputs
 
     @property
     def u(self):
         """The control variables."""
-        return self._u_input_
+        return self._u_inputs
 
     @property
     def i(self):
@@ -281,105 +476,103 @@ class AutogradDynamics(Dynamics):
         """Whether the second order expansions are available"""
         return self.use_second_order_
 
+    @property
+    def i(self):
+        """The time step variable."""
+        return self._i
+
     def f(self, x, u, i):
+        """Dynamics model.
+
+        Args:
+            x: Current state [state_size].
+            u: Current control [action_size].
+            i: Current time step.
+
+        Returns:
+            Next state [state_size].
         """
-        x_dot = f(x, u, i)
-        :param x: state [state_dimension]
-        :param u: control [control_dimension]
-        :param i: current time stamp
-        :return: state_next [state_dimension]
-        """
-        return np.array(self._f(x, u)).reshape((self.state_dimension_, 1))
+        z = np.hstack([x, u, i])
+        return self._f(*z)
 
     def f_x(self, x, u, i):
-        """
-        partial derivative of the dynamics w.r.t the state
-        :param x: state [state_dimension]
-        :param u: control [control_dimension]
-        :param i: current time stamp
-        :return: df/dx [state_dimension, state_dimension]
-        """
-        #array_jacobian_state =np.array(self._f_x[0](x, u))
-        #assert (self.state_dimension_ == len(self._f_x)), "the state vector has length {}, yet the " \
-        #                                                  "returned jacobian has length {}".format(self.state_dimension_, len(self._f_x))
-        #for k in range(1, self.state_dimension_):
-        #    array_jacobian_state = np.vstack((array_jacobian_state, np.array(self._f_x[k](x, u))))
+        """Partial derivative of dynamics model with respect to x.
 
-        return self._f_x(x, u)#np.array(array_jacobian_state)
+        Args:
+            x: Current state [state_size].
+            u: Current control [action_size].
+            i: Current time step.
+
+        Returns:
+            df/dx [state_size, state_size].
+        """
+        z = np.hstack([x, u, i])
+        return self._f_x(*z)
 
     def f_u(self, x, u, i):
+        """Partial derivative of dynamics model with respect to u.
+
+        Args:
+            x: Current state [state_size].
+            u: Current control [action_size].
+            i: Current time step.
+
+        Returns:
+            df/du [state_size, action_size].
         """
-        partial derivative of the dynamics w.r.t the control
-        :param x: state [state_dimension]
-        :param u: control [control_dimension]
-        :param i: current time stamp
-        :return: df/du [state_dimension, control_dimension]
-        """
-        #array_jacobian_control = np.array(self._f_x[0](x, u))
-        #assert (self.state_dimension_ == len(self._f_u)), "the state vector has length {}, yet the " \
-        #                                                  "returned jacobian has length {}".format(self.state_dimension_, len(self._f_x))
-        #for k in range(1, self.state_dimension_):
-        #    array_jacobian_control.vstack((array_jacobian_control, np.array(self._f_x[k](x, u))))
-        return self._f_u(x, u)#np.array(array_jacobian_control)
+        z = np.hstack([x, u, i])
+        return self._f_u(*z)
 
     def f_xx(self, x, u, i):
-        """
-        second partial derivative of the dynamics w.r.t the state
-        :param x: state [state_dimension]
-        :param u: control [control_dimension]
-        :param i: current time stamp
-        :return: d^2f/dx^2 [state_dimension, state_dimension, state_dimension]
-        """
+        """Second partial derivative of dynamics model with respect to x.
 
-        if not self.use_second_order_:
+        Args:
+            x: Current state [state_size].
+            u: Current control [action_size].
+            i: Current time step.
+
+        Returns:
+            d^2f/dx^2 [state_size, state_size, state_size].
+        """
+        if not self._has_hessians:
             raise NotImplementedError
-        else:
-            #list_hessian_xx = []
-            #assert (self.state_dimension_ == len(self._f_xx)), "the state vector has length {}, yet the " \
-            #                                                  "returned jacobian has length {}".format(
-            #    self.state_dimension_, len(self._f_xx))
-            #for k in range(0, self.state_dimension_):
-            #    list_hessian_xx.append(np.array(self._f_xx[k](x, u)))
-            return self._f_xx(x, u)#np.array(list_hessian_xx)
 
+        z = np.hstack([x, u, i])
+        return self._f_xx(*z)
 
     def f_ux(self, x, u, i):
+        """Second partial derivative of dynamics model with respect to u and x.
+
+        Args:
+            x: Current state [state_size].
+            u: Current control [action_size].
+            i: Current time step.
+
+        Returns:
+            d^2f/dudx [state_size, action_size, state_size].
         """
-        second partial derivative of the dynamics w.r.t the state and the control
-        :param x: state [state_dimension]
-        :param u: control [control_dimension]
-        :param i: current time stamp
-        :return: d^2f/dx^2 [state_dimension, control_dimension, state_dimension]
-        """
-        if not self.use_second_order_:
+        if not self._has_hessians:
             raise NotImplementedError
-        else:
-            #list_hessian_ux = []
-            #assert (self.state_dimension_ == len(self._f_ux)), "the state vector has length {}, yet the " \
-            #                                                   "returned jacobian has length {}".format(
-            #    self.state_dimension_, len(self._f_ux))
-            #for k in range(0, self.state_dimension_):
-            #    list_hessian_ux.append(np.array(self._f_ux[k](x, u)))
-            return self._f_ux(x, u)#np.array(list_hessian_ux)
+
+        z = np.hstack([x, u, i])
+        return self._f_ux(*z)
 
     def f_uu(self, x, u, i):
+        """Second partial derivative of dynamics model with respect to u.
+
+        Args:
+            x: Current state [state_size].
+            u: Current control [action_size].
+            i: Current time step.
+
+        Returns:
+            d^2f/du^2 [state_size, action_size, action_size].
         """
-        second partial derivative of the dynamics w.r.t t the control
-        :param x: state [state_dimension]
-        :param u: control [control_dimension]
-        :param i: current time stamp
-        :return: d^2f/dx^2 [state_dimension, control_dimension, control_dimension]
-        """
-        if not self.use_second_order_:
+        if not self._has_hessians:
             raise NotImplementedError
-        else:
-            #list_hessian_uu = []
-            #assert (self.state_dimension_ == len(self._f_uu)), "the state vector has length {}, yet the " \
-            #                                                   "returned jacobian has length {}".format(
-            #    self.state_dimension_, len(self._f_ux))
-            #for k in range(0, self.state_dimension_):
-            #    list_hessian_uu.append(np.array(self._f_uu[k](x, u)))
-            return self._f_uu(x, u)#np.array(list_hessian_uu)
+
+        z = np.hstack([x, u, i])
+        return self._f_uu(*z)
 
 
 

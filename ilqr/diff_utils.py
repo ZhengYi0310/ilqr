@@ -2,126 +2,218 @@
 import abc
 import sys
 import autograd.numpy as np
+import numpy as onp
 from autograd import grad, jacobian
 import scipy.linalg as sla
 import math
 
-def jacobian_scalar(expr, vars, state_dim, control_dim):
-    """
-    Computes the jacobian of a scalar expression w.r.t to (vector) variables
-    :param expr: the function expression l(x,u) or l(x,u,i)
-    :param vars: a h-stacked version of variables , [x_vec, u_vec, i] or just [x_vec, u_vec] 
-    :return: a list of function to compute corresponding derivatives
-    """
-    num_vars = vars.size
-    dim_sum = state_dim + control_dim
-    assert (num_vars == dim_sum + 1 or num_vars == dim_sum), "the number of variables can only be {} + {} or {} + {} + 1, " \
-                                                             "yet the {} is passed".format(state_dim, control_dim, state_dim, control_dim, num_vars)
-    x = vars[:state_dim]
+"""Autodifferentiation helper methods."""
 
-    if (num_vars == dim_sum): # non-terminal cost
-        u = vars[state_dim:]
-        jacobian_x = jacobian(expr, 0)
-        jacobian_u = jacobian(expr, 1)
-        return [jacobian_x, jacobian_u]
-    else:                     # terminal cost
-        u = vars[state_dim:-1]
-        jacobian_x = jacobian(expr, 0)
-        return [jacobian_x]
-
-def hessian_scalar(expr, vars, state_dim, control_dim):
-    """
-    Computes the jacobian of a scalar expression w.r.t to (vector) variables
-    :param expr: the function expression l(x,u) or l(x,u,i)
-    :param wrt: a h-stacked version of variables , [x_vec, u_vec, i] or just [x_vec, u_vec] 
-    :return: a list of function to compute corresponding derivatives
-    """
-    num_vars = vars.size
-    dim_sum = state_dim + control_dim
-    assert (
-    num_vars == dim_sum + 1 or num_vars == dim_sum), "the number of variables can only be {} + {} or {} + {} + 1, " \
-                                                     "yet the {} is passed".format(state_dim, control_dim, state_dim,
-                                                                                   control_dim, num_vars)
-
-    x = vars[:state_dim]
-    if (num_vars == dim_sum): # non-terminal cost 
-        u = vars[state_dim:]
-        hessian_xx = jacobian(jacobian(expr, 0), 0)
-        hessian_ux = jacobian(jacobian(expr, 1), 0)
-        hessian_uu = jacobian(jacobian(expr, 1), 1)
-        return [hessian_xx, hessian_ux, hessian_uu]
-    else:                     # terminal cost
-        u = vars[state_dim:-1]
-        hessian_xx = jacobian(jacobian(expr, 0), 0)
-        return [hessian_xx]
-
-def jacobian_vector(expr, vars, state_dim, control_dim):
-    """
-    Compute the jacobian of a vector w.r.t (vector) variables
-    :param expr: a (vector) list of functions to be differentiated 
-    :param vars: a h-stacked version of variables , [x_vec, u_vec] 
-    :param state_dim: 
-    :param control_dim: 
-    :return: 
-    """
-    num_vars = vars.size
-    dim_sum = state_dim + control_dim
-    assert (num_vars == num_vars == dim_sum), "the number of variables can only be {} + {}, " \
-                                                     "yet the {} is passed".format(state_dim, control_dim, num_vars)
-    list_jacobian_state = []
-    list_jacobian_control =[]
-    for i in range(0, len(expr)):
-        list_jacobian_state.append(jacobian_scalar(expr[i], vars, state_dim, control_dim)[0])
-        list_jacobian_control.append(jacobian_scalar(expr[i], vars, state_dim, control_dim)[1])
-    return [list_jacobian_state, list_jacobian_control]
-
-def hessian_vector(expr, vars, state_dim, control_dim):
-    """
-    Compute the hessian of a vector w.r.t (vector) variables
-    :param expr: a (vector) list of functions to be differentiated 
-    :param vars: a h-stacked version of variables , [x_vec, u_vec] 
-    :param state_dim: 
-    :param control_dim: 
-    :return: 
-    """
-    num_vars = vars.size
-    dim_sum = state_dim + control_dim
-    assert (num_vars == num_vars == dim_sum), "the number of variables can only be {} + {}, " \
-                                              "yet the {} is passed".format(state_dim, control_dim, num_vars)
-    list_hessian_xx = []
-    list_hessian_ux = []
-    list_hessian_uu = []
-    for i in range(0, len(expr)):
-        list_hessian_xx.append(hessian_scalar(expr[i], vars, state_dim, control_dim)[0])
-        list_hessian_ux.append(hessian_scalar(expr[i], vars, state_dim, control_dim)[1])
-        list_hessian_uu.append(hessian_scalar(expr[i], vars, state_dim, control_dim)[2])
-    return [list_hessian_xx, list_hessian_ux, list_hessian_uu]
-
-def _state_eq(st, u):
-        x, x_dot, theta, theta_dot = st
-        force = u[0]
-        costheta = np.cos(theta)
-        sintheta = np.sin(theta)
-        x = u[0] + x_dot
-        x_dot = x
-        return np.array([x, x_dot, theta, theta_dot])
+import theano
+import theano.tensor as T
 
 
-x = np.array([1., 2., 3., 4.])
-print len(x)
-x_reshape = np.reshape(x, (-1, 1))
-print x_reshape.shape
-print x.shape
-print (x + x_reshape).shape
-u = np.array([2., 0.5, -3])
-#print np.vstack((x, u))
-fun_vec = lambda x, u : [np.dot(x, x.T) + u[1],  np.dot(u, u.T) * 2 + x[4] * x[2] + x[3] * x[3] - u[1] * u[1] + u[0] * u[2] + u[0] * x[1]]
-#for f in fun_vec:
-#    print f(x, u)
-#print jacobian(fun_vec, 0)
-fun = lambda x, u : np.dot(x, x.T)  + np.dot(u, u.T) * 2 + x[4] * x[2] + x[3] * x[3] - u[1] * u[1] + u[0] * u[2] + u[0] * x[1]
-#print jacobian(fun, 0)(x, u)
-print jacobian(_state_eq, 0)(x, u)
+def jacobian_scalar(expr, wrt):
+    """Computes the Jacobian of a scalar expression with respect to varaibles.
+    Args:
+        expr: Scalar Theano tensor expression.
+        wrt: List of Theano variables.
+    Returns:
+        Theano tensor.
+    """
+    J = T.grad(expr, wrt, disconnected_inputs="ignore")
+    return J
+
+
+def jacobian_vector(expr, wrt, size):
+    """Computes the Jacobian of a vector expression with respect to varaibles.
+    Args:
+        expr: Vector Theano tensor expression.
+        wrt: List of Theano variables.
+        size: Vector size.
+    Returns:
+        Theano tensor.
+    """
+    return _tensor_map(lambda f: jacobian_scalar(f, wrt), expr, size)
+
+
+def hessian_scalar(expr, wrt):
+    """Computes the Hessian of a scalar expression with respect to varaibles.
+    Args:
+        expr: Theano tensor expression.
+        wrt: List of Theano variables.
+    Returns:
+        Theano tensor.
+    """
+    J = T.grad(expr, wrt, disconnected_inputs="ignore")
+    Q = T.stack([T.grad(g, wrt, disconnected_inputs="ignore") for g in J])
+    return Q
+
+
+def hessian_vector(expr, wrt, size):
+    """Computes the Hessian of a vector expression with respect to varaibles.
+    Args:
+        expr: Vector Theano tensor expression.
+        wrt: List of Theano variables.
+        size: Vector size.
+    Returns:
+        Theano tensor.
+    """
+    return _tensor_map(lambda x: hessian_scalar(x, wrt), expr, size)
+
+
+def _tensor_map(f, expr, size):
+    """Maps a function onto of a vector expression.
+    Args:
+        f: Function to apply.
+        expr: Theano tensor expression.
+        wrt: List of Theano variables.
+        size: Vector size.
+    Returns:
+        Theano tensor.
+    """
+    return T.stack([f(expr[i]) for i in range(size)])
+
+
+def as_function(expr, inputs, **kwargs):
+    """Converts and optimizes a Theano expression into a function.
+    Args:
+        expr: Theano tensor expression.
+        inputs: List of Theano variables to use as inputs.
+        **kwargs: Additional key-word arguments to pass to `theano.function()`.
+    Returns:
+        A function.
+    """
+    return theano.function(inputs, expr, on_unused_input="ignore", **kwargs)
+
+def wrapToPi(x):
+
+    xwrap = np.remainder(x, 2 * np.pi)
+    mask = np.abs(xwrap) > np.pi
+    xwrap[mask] -= 2 * np.pi * np.sign(xwrap[mask])
+    return xwrap
+
+
+# def jacobian_scalar(expr, vars, state_dim, control_dim):
+#     """
+#     Computes the jacobian of a scalar expression w.r.t to (vector) variables
+#     :param expr: the function expression l(x,u) or l(x,u,i)
+#     :param vars: a h-stacked version of variables , [x_vec, u_vec, i] or just [x_vec, u_vec]
+#     :return: a list of function to compute corresponding derivatives
+#     """
+#     num_vars = vars.size
+#     dim_sum = state_dim + control_dim
+#     assert (num_vars == dim_sum + 1 or num_vars == dim_sum), "the number of variables can only be {} + {} or {} + {} + 1, " \
+#                                                              "yet the {} is passed".format(state_dim, control_dim, state_dim, control_dim, num_vars)
+#     x = vars[:state_dim]
+#
+#     if (num_vars == dim_sum): # non-terminal cost
+#         u = vars[state_dim:]
+#         jacobian_x = jacobian(expr, 0)
+#         jacobian_u = jacobian(expr, 1)
+#         return [jacobian_x, jacobian_u]
+#     else:                     # terminal cost
+#         u = vars[state_dim:-1]
+#         jacobian_x = jacobian(expr, 0)
+#         return [jacobian_x]
+#
+# def hessian_scalar(expr, vars, state_dim, control_dim):
+#     """
+#     Computes the jacobian of a scalar expression w.r.t to (vector) variables
+#     :param expr: the function expression l(x,u) or l(x,u,i)
+#     :param wrt: a h-stacked version of variables , [x_vec, u_vec, i] or just [x_vec, u_vec]
+#     :return: a list of function to compute corresponding derivatives
+#     """
+#     num_vars = vars.size
+#     dim_sum = state_dim + control_dim
+#     assert (
+#     num_vars == dim_sum + 1 or num_vars == dim_sum), "the number of variables can only be {} + {} or {} + {} + 1, " \
+#                                                      "yet the {} is passed".format(state_dim, control_dim, state_dim,
+#                                                                                    control_dim, num_vars)
+#
+#     x = vars[:state_dim]
+#     if (num_vars == dim_sum): # non-terminal cost
+#         u = vars[state_dim:]
+#         hessian_xx = jacobian(jacobian(expr, 0), 0)
+#         hessian_ux = jacobian(jacobian(expr, 1), 0)
+#         hessian_uu = jacobian(jacobian(expr, 1), 1)
+#         return [hessian_xx, hessian_ux, hessian_uu]
+#     else:                     # terminal cost
+#         u = vars[state_dim:-1]
+#         hessian_xx = jacobian(jacobian(expr, 0), 0)
+#         return [hessian_xx]
+#
+# def jacobian_vector(expr, vars, state_dim, control_dim):
+#     """
+#     Compute the jacobian of a vector w.r.t (vector) variables
+#     :param expr: a (vector) list of functions to be differentiated
+#     :param vars: a h-stacked version of variables , [x_vec, u_vec]
+#     :param state_dim:
+#     :param control_dim:
+#     :return:
+#     """
+#     num_vars = vars.size
+#     dim_sum = state_dim + control_dim
+#     assert (num_vars == num_vars == dim_sum), "the number of variables can only be {} + {}, " \
+#                                                      "yet the {} is passed".format(state_dim, control_dim, num_vars)
+#     list_jacobian_state = []
+#     list_jacobian_control =[]
+#     for i in range(0, len(expr)):
+#         list_jacobian_state.append(jacobian_scalar(expr[i], vars, state_dim, control_dim)[0])
+#         list_jacobian_control.append(jacobian_scalar(expr[i], vars, state_dim, control_dim)[1])
+#     return [list_jacobian_state, list_jacobian_control]
+#
+# def hessian_vector(expr, vars, state_dim, control_dim):
+#     """
+#     Compute the hessian of a vector w.r.t (vector) variables
+#     :param expr: a (vector) list of functions to be differentiated
+#     :param vars: a h-stacked version of variables , [x_vec, u_vec]
+#     :param state_dim:
+#     :param control_dim:
+#     :return:
+#     """
+#     num_vars = vars.size
+#     dim_sum = state_dim + control_dim
+#     assert (num_vars == num_vars == dim_sum), "the number of variables can only be {} + {}, " \
+#                                               "yet the {} is passed".format(state_dim, control_dim, num_vars)
+#     list_hessian_xx = []
+#     list_hessian_ux = []
+#     list_hessian_uu = []
+#     for i in range(0, len(expr)):
+#         list_hessian_xx.append(hessian_scalar(expr[i], vars, state_dim, control_dim)[0])
+#         list_hessian_ux.append(hessian_scalar(expr[i], vars, state_dim, control_dim)[1])
+#         list_hessian_uu.append(hessian_scalar(expr[i], vars, state_dim, control_dim)[2])
+#     return [list_hessian_xx, list_hessian_ux, list_hessian_uu]
+#
+# def _state_eq(st, u):
+#         x, x_dot, theta, theta_dot = st
+#         force = u[0]
+#         new_theta_dot = np.cos(theta)
+#         temp = np.sin(theta)
+#         new_theta = np.arctan2(new_theta_dot, temp)
+#         new_x = u[0] + x_dot
+#         new_x_dot = x + u[1]
+#         return np.array([new_x, new_x_dot, new_theta, theta_dot])
+
+
+# x = np.array([1., 2., 3., 4.])
+# print x.shape
+# print x.T.shape
+# x_reshape = np.reshape(x, (-1, 1))
+# print x_reshape.shape
+# print x.shape
+# print (x + x_reshape).shape
+# u = np.array([2., 0.5])
+#
+# #print np.append(x, [u], axis=0)
+# fun_vec = lambda x, u : [np.dot(x, x.T) + u[1],  np.dot(u, u.T) * 2 + x[4] * x[2] + x[3] * x[3] - u[1] * u[1] + u[0] * u[2] + u[0] * x[1]]
+# #for f in fun_vec:
+# #    print f(x, u)
+# #print jacobian(fun_vec, 0)
+# fun = lambda x, u : np.dot(x, x.T)  + np.dot(u, u.T) * 2 + x[4] * x[2] + x[3] * x[3] - u[1] * u[1] + u[0] * u[2] + u[0] * x[1]
+# #print jacobian(fun, 0)(x, u)
+# print jacobian(_state_eq, 0)(x, u)
+# print jacobian(_state_eq, 1)(x, u)
 # Optdict = {'maxIter': 100, 'minGrad': 1e-8, 'minRelImprove':1e-8, 'stepDec':0.6,  'minStep': 1e-22, 'Armijo': 0.1, 'print': 0}
 #
 # lower = np.array([-2., 0.5, -3.])
@@ -156,13 +248,13 @@ print jacobian(_state_eq, 0)(x, u)
 #upper = np.array([-1., 1.5, 0.])
 #clamp = lambda x : np.maximum(lower, np.minimum(upper, x))
 #print clamp(temp)
-i = 5.
+# i = 5.
 #print x.reshape((5, 1))
 
 
 
 
-stacked_input = np.hstack([x, u])
+# stacked_input = np.hstack([x, u])
 
 
 # hessian_result = hessian_scalar(fun, stacked_input, 5, 3)
@@ -211,16 +303,16 @@ plt.show()
 # c = ([[-1, -1, -1], [0.5, 0.5, 0.5]])
 # d = []
 # a = np.array([[1, 1, 1], [-2, -1, -1]])
-c = np.array([[0.1, 0.2, 0.1, 0], [0.1, 0.2, 0.1, -1]])
-d = np.array([[2], [1], [0], [0]])
-print np.dot(c, d).shape
+# c = np.array([[0.1, 0.2, 0.1, 0], [0.1, 0.2, 0.1, -1]])
+# d = np.array([[2], [1], [0], [0]])
+# print np.dot(c, d).shape
 # print np.hstack([a, c])
 #
 # from sklearn.cluster import KMeans
 # import time
 # start_time = time.time()
 # X = np.array([[-0.4, 0.9], [0.01, 4], [12, 9],[4, 2], [4, 4], [4, 0]])
-# print X[0, :].shape
+# print X[0].shape
 # e = np.ones((6,), np.bool_)
 # e[2] = False
 # e[3] = False
@@ -269,3 +361,17 @@ print np.dot(c, d).shape
 # c = np.array([[0.1, 0.2, 0.1, 8], [-0.1, 0.2, -0.1, 3], [0, 0.03, -0.05, 2], [0, 0, 0 ,1]])
 # print np.diag(np.diag(c))
 
+
+# def wrapToPi(x):
+#
+#     xwrap = np.remainder(x, 2 * np.pi)
+#     mask = np.abs(xwrap) > np.pi
+#     xwrap[mask] -= 2 * np.pi * np.sign(xwrap[mask])
+#     return xwrap
+#
+#
+# phase = onp.linspace(-3 * onp.pi, 3 * onp.pi, num=20)
+# phase[10:] += onp.pi
+# print phase
+# phase = wrapToPi(phase)
+# print phase
